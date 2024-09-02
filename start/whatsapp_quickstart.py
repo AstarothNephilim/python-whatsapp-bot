@@ -66,7 +66,7 @@ def get_text_message_input(recipient, text):
 def send_message(data):
     headers = {
         "Content-type": "application/json",
-        "Authorization": f"Bearer {ACCESS_TOKEN}",
+        "Authorization": f"Authorization: Bearer {ACCESS_TOKEN}",
     }
 
     url = f"https://graph.facebook.com/{VERSION}/{PHONE_NUMBER_ID}/messages"
