@@ -5,8 +5,10 @@ from flask import Blueprint, request, jsonify, current_app
 
 from .decorators.security import signature_required
 from .utils.whatsapp_utils import (
-    process_whatsapp_message,
+    process_text_whatsapp_message,
     is_valid_whatsapp_message,
+    get_message_type,
+    process_document_whatsapp_message
 )
 
 webhook_blueprint = Blueprint("webhook", __name__)
@@ -27,7 +29,7 @@ def handle_message():
         response: A tuple containing a JSON response and an HTTP status code.
     """
     body = request.get_json()
-    # logging.info(f"request body: {body}")
+    #logging.info(f"request body: {body}")
 
     # Check if it's a WhatsApp status update
     if (
@@ -39,19 +41,39 @@ def handle_message():
         logging.info("Received a WhatsApp status update.")
         return jsonify({"status": "ok"}), 200
 
-    try:
-        if is_valid_whatsapp_message(body):
-            process_whatsapp_message(body)
-            return jsonify({"status": "ok"}), 200
-        else:
-            # if the request is not a WhatsApp API event, return an error
-            return (
-                jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
-                404,
-            )
-    except json.JSONDecodeError:
-        logging.error("Failed to decode JSON")
-        return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
+    msg_type = get_message_type(body)
+
+    if msg_type == "text":
+        try:
+            if is_valid_whatsapp_message(body):
+                logging.info(f"This is not a status: {body}")
+                process_text_whatsapp_message(body)
+                return jsonify({"status": "ok"}), 200
+            else:
+                # if the request is not a WhatsApp API event, return an error
+                return (
+                    jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
+                    404,
+                )
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON")
+            return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
+        
+    if msg_type == "document":
+        try:
+            if is_valid_whatsapp_message(body):
+                logging.info(f"This is not a status: {body}")
+                process_document_whatsapp_message(body)
+                return jsonify({"status": "ok"}), 200
+            else:
+                # if the request is not a WhatsApp API event, return an error
+                return (
+                    jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
+                    404,
+                )
+        except json.JSONDecodeError:
+            logging.error("Failed to decode JSON")
+            return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
 
 
 # Required webhook verifictaion for WhatsApp
