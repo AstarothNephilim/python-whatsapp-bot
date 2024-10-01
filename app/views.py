@@ -1,6 +1,6 @@
 import logging
 import json
-from app.models import WebhookPayload, parse_webhook_payload
+from app.models.models import WebhookPayload, parse_webhook_payload
 from flask import Blueprint, request, jsonify, current_app
 
 from .decorators.security import signature_required
@@ -77,6 +77,27 @@ def handle_message():
             return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
 
 
+def new_handle_message():
+    print(f'Type of request: {type(request)}')
+    print(f'Type of request to json: {type(request.get_json())}')
+    body = request.get_json()
+    body_to_str_json = json.dumps(body)
+    
+    processed_payload = parse_webhook_payload(body_to_str_json)
+    print(f'Processed Payload: {processed_payload}')
+    entry = processed_payload.entry[0]
+    print(f'This is the entry{entry}')
+    change = entry.changes[0]
+    hook_type = change.field
+    print(f'This hook is {hook_type}')
+    
+    
+    if change.value.messages[0]:
+        msg_type = change.value.messages[0].type
+        print(f'This is the type: {msg_type}')
+
+
+
 # Required webhook verifictaion for WhatsApp
 def verify():
     # Parse params from the webhook verification request
@@ -107,6 +128,6 @@ def webhook_get():
 @webhook_blueprint.route("/webhook", methods=["POST"])
 @signature_required
 def webhook_post():
-    return handle_message()
+    return new_handle_message()
 
 

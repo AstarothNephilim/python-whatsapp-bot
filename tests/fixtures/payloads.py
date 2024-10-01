@@ -10,7 +10,7 @@ VALID_STATUS_UPDATE_PAYLOAD = json.dumps({
             "id": "entry_id_1",
             "changes": [
                 {
-                    "field": "statuses",
+                    "field": "messages",
                     "value": {
                         "messaging_product": "whatsapp",
                         "metadata": {

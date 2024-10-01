@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field, ValidationError
 from typing import List, Literal, Union, Annotated
 import json
+import logging
+
 
 class Metadata(BaseModel):
     display_phone_number: str
@@ -79,18 +81,25 @@ class ValueMessages(BaseModel):
     contacts: List[Contact]
     messages: List[Message]
 
+# Change Models
 class ChangeMessages(BaseModel):
     field: Literal['messages']
     value: ValueMessages
 
 class ChangeStatuses(BaseModel):
-    field: Literal['statuses']
+    field: Literal['messages']  # 'field' remains 'messages' for statuses as per payload
     value: ValueStatuses
 
-# Use discriminated union for Change based on the 'field' value
-Change = Annotated[Union[ChangeMessages, ChangeStatuses], Field(discriminator='field')]
+# Union of Change Types Without Discriminator
+Change = Union[ChangeMessages, ChangeStatuses]
 
-# Entry and root Models
+
+
+# ---------------------------
+# Webhook Models
+# ---------------------------
+
+
 class Entry(BaseModel):
     id: str
     changes: List[Change]
@@ -99,7 +108,67 @@ class WebhookPayload(BaseModel):
     object: str
     entry: List[Entry]
 
+    def get_changes(self) -> Change:
+        changes = self.entry[0].changes[0]
+        return changes
+    
+    def get_type_of_webhook(self) -> str:
+        change = self.get_changes()
 
+        if isinstance(change,ChangeStatuses):
+            return 'status'
+        elif isinstance(change,ChangeMessages):
+            return 'message'
+        else:
+            return 'unknown'
+
+    def is_message(self):
+        change = self.get_changes()
+        return isinstance(change,ChangeMessages)
+    
+    def is_status(self):
+        change = self.get_changes()
+        return isinstance(change,ChangeStatuses)
+    
+    def is_text_message(self):
+        change = self.get_changes()
+
+        if not isinstance(change,ChangeMessages):
+            return logging.error("Not a message")
+        
+        message = change.value.messages[0]
+        return isinstance(message, TextMessage)
+
+    def is_document_message(self):
+        change = self.get_changes()
+
+        if not isinstance(change,ChangeMessages):
+            return logging.error("Not a message")
+        
+        message = change.value.messages[0]
+        return isinstance(message, DocumentMessage)
+
+
+    def get_body_of_text_message(self):
+        if self.is_text_message():
+            change = self.get_changes()
+            message = change.value.messages[0]
+            body = message.text.body
+            return body
+        else:
+            return "Not a message"
+
+
+    def get_document_of_document_message(self):
+        if self.is_document_message():
+            change = self.get_changes()
+            message = change.value.messages[0]
+            document = message.document
+
+        return document
+
+
+        
 
 def parse_webhook_payload(payload: str):
     """
@@ -115,7 +184,6 @@ def parse_webhook_payload(payload: str):
         payload_dict = json.loads(payload)
         webhook_payload = WebhookPayload(**payload_dict)
         return webhook_payload
-    
     except ValidationError as e:
         print("Validation failed!")
         print(e.json())
