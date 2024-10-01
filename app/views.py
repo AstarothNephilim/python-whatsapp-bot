@@ -1,6 +1,6 @@
 import logging
 import json
-
+from app.models import WebhookPayload, parse_webhook_payload
 from flask import Blueprint, request, jsonify, current_app
 
 from .decorators.security import signature_required
@@ -39,6 +39,7 @@ def handle_message():
         .get("statuses")
     ):
         logging.info("Received a WhatsApp status update.")
+        logging.info(f"This is a status: {body}")
         return jsonify({"status": "ok"}), 200
 
     msg_type = get_message_type(body)

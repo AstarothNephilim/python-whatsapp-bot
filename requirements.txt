@@ -3,4 +3,4 @@ python-dotenv
 openai
 aiohttp
 requests
-pydantic
+pytest
