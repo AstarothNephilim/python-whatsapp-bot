@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ValidationError
-from typing import List, Literal, Union, Annotated
+from typing import List, Literal, Union, Annotated, Tuple
 import json
 import logging
 
@@ -108,29 +108,55 @@ class WebhookPayload(BaseModel):
     object: str
     entry: List[Entry]
 
+
     def get_changes(self) -> Change:
         changes = self.entry[0].changes[0]
         return changes
     
+    def get_value(self):
+        changes = self.get_changes()
+        value = changes.value
+
+        return value
+    
+    def get_messages(self):
+        value = self.get_value()
+        messages = value.messages[0]
+
+        return messages
+
+    def get_display_phone_number(self) -> str:
+        value = self.get_value()
+        display_phone_number = value.metadata.display_phone_number
+
+        return display_phone_number
+    
+    # Returns type of message (document,text,audio...)
+    def get_message_type(self) -> str:
+        messages = self.get_messages()
+
+        return messages.type
+
+    #Probably better to just extract it from type
     def get_type_of_webhook(self) -> str:
         change = self.get_changes()
 
         if isinstance(change,ChangeStatuses):
             return 'status'
         elif isinstance(change,ChangeMessages):
-            return 'message'
+            return self.get_message_type()
         else:
             return 'unknown'
 
-    def is_message(self):
+    def is_message(self) -> bool:
         change = self.get_changes()
         return isinstance(change,ChangeMessages)
     
-    def is_status(self):
+    def is_status(self) -> bool:
         change = self.get_changes()
         return isinstance(change,ChangeStatuses)
     
-    def is_text_message(self):
+    def is_text_message(self) -> bool:
         change = self.get_changes()
 
         if not isinstance(change,ChangeMessages):
@@ -139,7 +165,7 @@ class WebhookPayload(BaseModel):
         message = change.value.messages[0]
         return isinstance(message, TextMessage)
 
-    def is_document_message(self):
+    def is_document_message(self) -> bool:
         change = self.get_changes()
 
         if not isinstance(change,ChangeMessages):
@@ -148,8 +174,17 @@ class WebhookPayload(BaseModel):
         message = change.value.messages[0]
         return isinstance(message, DocumentMessage)
 
+    # Not really useful just for testing 
+    def get_phone_status(self) -> tuple:
+        if self.is_status():
+            values = self.get_value()
+            phone = self.get_display_phone_number()
+            statuses = values.statuses[0]
+            status = statuses.status
+            
+            return (phone,status)
 
-    def get_body_of_text_message(self):
+    def get_body_of_text_message(self) -> str:
         if self.is_text_message():
             change = self.get_changes()
             message = change.value.messages[0]
@@ -159,7 +194,7 @@ class WebhookPayload(BaseModel):
             return "Not a message"
 
 
-    def get_document_of_document_message(self):
+    def get_document_of_document_message(self) -> DocumentMessageContent:
         if self.is_document_message():
             change = self.get_changes()
             message = change.value.messages[0]
@@ -170,7 +205,7 @@ class WebhookPayload(BaseModel):
 
         
 
-def parse_webhook_payload(payload: str):
+def parse_webhook_payload(payload: str) -> WebhookPayload:
     """
     Parses the JSON webhook payload into a WebhookPayload object.
 

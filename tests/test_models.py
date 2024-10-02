@@ -110,3 +110,12 @@ def test_get_document_of_test_document(valid_document_message_payload):
 
     assert isinstance(document,DocumentMessageContent)
     assert document.filename == "test_document.pdf"
+
+
+
+def test_get_phone_status(valid_status_update_payload):
+    webhook = parse_webhook_payload(valid_status_update_payload)
+    phone,status = webhook.get_phone_status()
+
+    assert status == "delivered"
+    assert phone == "15550000000"

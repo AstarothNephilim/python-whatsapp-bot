@@ -1,6 +1,8 @@
 import logging
 import json
-from app.models.models import WebhookPayload, parse_webhook_payload
+from app.models.models import *
+
+from pydantic import ValidationError
 from flask import Blueprint, request, jsonify, current_app
 
 from .decorators.security import signature_required
@@ -11,114 +13,75 @@ from .utils.whatsapp_utils import (
     process_document_whatsapp_message
 )
 
+from .utils.whatsapp_security import verify
+
+
 webhook_blueprint = Blueprint("webhook", __name__)
 
 
-def handle_message():
-    """
-    Handle incoming webhook events from the WhatsApp API.
-
-    This function processes incoming WhatsApp messages and other events,
-    such as delivery statuses. If the event is a valid message, it gets
-    processed. If the incoming payload is not a recognized WhatsApp event,
-    an error is returned.
-
-    Every message send will trigger 4 HTTP requests to your webhook: message, sent, delivered, read.
-
-    Returns:
-        response: A tuple containing a JSON response and an HTTP status code.
-    """
+def process_payload(request):
     body = request.get_json()
-    #logging.info(f"request body: {body}")
+    json_str_body = json.dumps(body)
 
-    # Check if it's a WhatsApp status update
-    if (
-        body.get("entry", [{}])[0]
-        .get("changes", [{}])[0]
-        .get("value", {})
-        .get("statuses")
-    ):
-        logging.info("Received a WhatsApp status update.")
-        logging.info(f"This is a status: {body}")
-        return jsonify({"status": "ok"}), 200
+    webhook = parse_webhook_payload(json_str_body)
+    logging.info(f'Webhook received: {webhook}')
+    return webhook
 
-    msg_type = get_message_type(body)
 
-    if msg_type == "text":
-        try:
-            if is_valid_whatsapp_message(body):
-                logging.info(f"This is not a status: {body}")
-                process_text_whatsapp_message(body)
-                return jsonify({"status": "ok"}), 200
-            else:
-                # if the request is not a WhatsApp API event, return an error
-                return (
-                    jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
-                    404,
-                )
-        except json.JSONDecodeError:
-            logging.error("Failed to decode JSON")
-            return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
-        
-    if msg_type == "document":
-        try:
-            if is_valid_whatsapp_message(body):
-                logging.info(f"This is not a status: {body}")
-                process_document_whatsapp_message(body)
-                return jsonify({"status": "ok"}), 200
-            else:
-                # if the request is not a WhatsApp API event, return an error
-                return (
-                    jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
-                    404,
-                )
-        except json.JSONDecodeError:
-            logging.error("Failed to decode JSON")
-            return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
+def status_webhook_handler(webhook):
+    phone,status = webhook.get_phone_status()
+    print(f'This is the status: {phone},{status}')
 
+    return phone,status
+
+
+def text_webhook_handler(webhook):
+    body = webhook.get_body_of_text_message()
+    print(f'This is the body of the message:  {body}')
+    return body
+
+
+def document_webhook_handler(webhook):
+    document = webhook.get_document_of_document_message()
+    print(f'This is the document. \n Filename: {document.filename} \n Type {document.mime_type}')
+    print(f'sha256: {document.sha256} \n id: {document.id}')
+
+    return document.id
+
+
+def dynamic_webhook_handler(webhook):
+
+    function_type_dict = {'status':status_webhook_handler,'text':text_webhook_handler,'document':document_webhook_handler}
+    webhook_type = webhook.get_type_of_webhook()
+
+    if webhook_type not in function_type_dict.keys():
+        raise Exception("This payload model has not been defined yet")
+
+    webhook_func = function_type_dict[webhook_type]
+
+    return webhook_func(webhook)
 
 def new_handle_message():
-    print(f'Type of request: {type(request)}')
-    print(f'Type of request to json: {type(request.get_json())}')
-    body = request.get_json()
-    body_to_str_json = json.dumps(body)
-    
-    processed_payload = parse_webhook_payload(body_to_str_json)
-    print(f'Processed Payload: {processed_payload}')
-    entry = processed_payload.entry[0]
-    print(f'This is the entry{entry}')
-    change = entry.changes[0]
-    hook_type = change.field
-    print(f'This hook is {hook_type}')
-    
-    
-    if change.value.messages[0]:
-        msg_type = change.value.messages[0].type
-        print(f'This is the type: {msg_type}')
+    try:
+        processed_payload = process_payload(request)
+        result = dynamic_webhook_handler(processed_payload)
+        print(result)
+        return jsonify({'status':'ok'}),200
 
-
-
-# Required webhook verifictaion for WhatsApp
-def verify():
-    # Parse params from the webhook verification request
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-    # Check if a token and mode were sent
-    if mode and token:
-        # Check the mode and token sent are correct
-        if mode == "subscribe" and token == current_app.config["VERIFY_TOKEN"]:
-            # Respond with 200 OK and challenge token from the request
-            logging.info("WEBHOOK_VERIFIED")
-            return challenge, 200
-        else:
-            # Responds with '403 Forbidden' if verify tokens do not match
-            logging.info("VERIFICATION_FAILED")
-            return jsonify({"status": "error", "message": "Verification failed"}), 403
-    else:
-        # Responds with '400 Bad Request' if verify tokens do not match
-        logging.info("MISSING_PARAMETER")
-        return jsonify({"status": "error", "message": "Missing parameters"}), 400
+    except ValidationError as e:
+        logging.error(f"Validation failed! \n {e.json()}")
+        return (
+                    jsonify({"status": "error", "message": "Not a WhatsApp API event"}),
+                    404,
+                )
+    
+    except json.JSONDecodeError:
+        logging.error("Failed to decode JSON")
+        return jsonify({"status": "error", "message": "Invalid JSON provided"}), 400
+    
+    except Exception as e:
+        logging.error("Unexpected exception")
+        return jsonify({"status": "error", "message": "ERROR"}), 400
 
 
 @webhook_blueprint.route("/webhook", methods=["GET"])
