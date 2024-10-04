@@ -5,3 +5,5 @@ aiohttp
 requests
 pytest
 pandas
+flask-sqlalchemy
+flask-migrate

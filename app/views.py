@@ -1,9 +1,11 @@
 import logging
 import json
-from app.models.models import *
-
 from pydantic import ValidationError
 from flask import Blueprint, request, jsonify, current_app
+
+
+from .utils.whatsapp_security import verify
+
 
 from .decorators.security import signature_required
 from .utils.whatsapp_utils import (
@@ -12,11 +14,10 @@ from .utils.whatsapp_utils import (
     get_message_type,
     process_document_whatsapp_message
 )
-
-from .utils.whatsapp_security import verify
-
-
 webhook_blueprint = Blueprint("webhook", __name__)
+
+from app.models.payload_models import *
+
 
 
 def process_payload(request):

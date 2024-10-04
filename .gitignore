@@ -89,3 +89,7 @@ target/
 
 # Exlcude the database file
 .db
+
+# Adr data and csv
+
+*.csv

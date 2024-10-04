@@ -1,6 +1,6 @@
 import pytest
 from pydantic import ValidationError
-from app.models.models import WebhookPayload, parse_webhook_payload, Change, ChangeMessages, ChangeStatuses,DocumentMessageContent
+from app.models.payload_models import WebhookPayload, parse_webhook_payload, Change, ChangeMessages, ChangeStatuses,DocumentMessageContent
 
 def test_valid_status_update(valid_status_update_payload):
     try:
