@@ -2,25 +2,16 @@ import logging
 import json
 from pydantic import ValidationError
 from flask import Blueprint, request, jsonify, current_app
-
-
 from .utils.whatsapp_security import verify
-
-
 from .decorators.security import signature_required
-from .utils.whatsapp_utils import (
-    process_text_whatsapp_message,
-    is_valid_whatsapp_message,
-    get_message_type,
-    process_document_whatsapp_message
-)
+from .utils.document_utils import process_document_webhook
 webhook_blueprint = Blueprint("webhook", __name__)
 
 from app.models.payload_models import *
 
 
 
-def process_payload(request):
+def process_raw_payload(request):
     body = request.get_json()
     json_str_body = json.dumps(body)
 
@@ -42,19 +33,13 @@ def text_webhook_handler(webhook):
     return body
 
 
-def document_webhook_handler(webhook):
-    document = webhook.get_document_of_document_message()
-    print(f'This is the document. \n Filename: {document.filename} \n Type {document.mime_type}')
-    print(f'sha256: {document.sha256} \n id: {document.id}')
-
-    return document.id
-
 
 def dynamic_webhook_handler(webhook):
 
-    function_type_dict = {'status':status_webhook_handler,'text':text_webhook_handler,'document':document_webhook_handler}
+    function_type_dict = {'status':status_webhook_handler,'text':text_webhook_handler,'document':process_document_webhook}
     webhook_type = webhook.get_type_of_webhook()
 
+    #Check that we are dealing with managed webhooks
     if webhook_type not in function_type_dict.keys():
         raise Exception("This payload model has not been defined yet")
 
@@ -64,7 +49,7 @@ def dynamic_webhook_handler(webhook):
 
 def new_handle_message():
     try:
-        processed_payload = process_payload(request)
+        processed_payload = process_raw_payload(request)
         result = dynamic_webhook_handler(processed_payload)
         print(result)
         return jsonify({'status':'ok'}),200

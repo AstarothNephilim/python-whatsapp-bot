@@ -1,0 +1,35 @@
+# Crear una nueva instancia de User con solo el campo email
+new_user = User(
+    email="my_email@email.com",
+    date_of_birth=datetime(1990, 1, 1, tzinfo=datetime.utcnow().astimezone().tzinfo),
+    gender="Other",
+    height=175.5,
+    initial_weight=70.0,
+    phone_number="1234567890"
+)
+
+
+
+# Crear una nueva sesión de entrenamiento utilizando la relación
+new_session = TrainingSession(
+    date=datetime(2024, 10, 6, 15, 30, 0, tzinfo=timezone.utc),  # Fecha y hora de la sesión
+    notes="Sesión de entrenamiento de fuerza."
+)
+
+
+new_user.training_sessions.append(new_session)
+
+
+# Get all training sessions of a user:
+
+user = db.session.get(User, 1)
+
+
+new_session = TrainingSession(
+    date=datetime(2024, 11, 5, 12, 30, 0, tzinfo=timezone.utc),  # Fecha y hora de la sesión
+    notes="Sesión de entrenamiento de resistencia." , user = user
+)
+
+
+(venv) $ flask db downgrade base
+(venv) $ flask db upgrade

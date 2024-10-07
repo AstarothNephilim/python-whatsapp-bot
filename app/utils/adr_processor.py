@@ -1,7 +1,12 @@
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone,  timedelta
 import hashlib
-
+from flask import current_app
+from app import db
+import sqlalchemy as sa
+import sqlalchemy.orm as so 
+from app.models.models import User, TrainingSession, TrainingDetail
+from .path_utils import get_download_data_path
 
 def split_series_column(df):
     try:
@@ -114,8 +119,6 @@ def add_timestamps(df):
     return df_converted
 
 
-
-
 def reorder_columns(df):
     """
     Reorder columns in the specified sequence.
@@ -156,7 +159,11 @@ def reorder_columns(df):
 
 
 
-def preprocess_adr_data(new_data):
+def preprocess_adr_data(new_adr_path):
+    #Data to csv
+    new_data = pd.read_csv(new_adr_path)
+
+
     new_data_copy = new_data.copy()
     
     new_data_copy = new_data.drop(columns = "R")
@@ -183,9 +190,30 @@ def preprocess_adr_data(new_data):
 
     return new_data_copy
 
+def get_previous_adr_data():
+    file_path = get_download_data_path() / current_app.config.get('TEMPORARY_DATAFRAME_TRAINING')
+    if file_path.exists():
+        adr_dataframe = pd.read_csv(file_path)
+    else:
+        adr_dataframe = pd.DataFrame(columns=[
+                        'Timestamp',
+                        'SERIE',
+                        'REP',
+                        'KG',
+                        'D',
+                        'VM',
+                        'VMP',
+                        'RM',
+                        'P(W)',
+                        'Perfil',
+                        'Ejer.',
+                        'Atleta',
+                        'Ecuacion',
+                        'hash_id'
+                            ])
+        adr_dataframe.to_csv(file_path)
 
-
-
+    return adr_dataframe
 
 
 def filter_df_based_on_hash(old_df,new_df):
@@ -195,8 +223,106 @@ def filter_df_based_on_hash(old_df,new_df):
         # Define the conditions
         new_series_condition = ~new_df['hash_id'].isin(existing_hashes)
         new_series_df = new_df[new_series_condition]
-    
+                
         return new_series_df
 
     except Exception as e:
         print(f'Exception: {e}')
+
+# Should refactor in the future to use other non-optional column (i.e phone num)
+# Should test error
+def get_user_from_df(df) -> User:
+    atleta_alias = df.loc[1,"Atleta"]
+    query = sa.select(User).where(User.alias == atleta_alias)
+    result = db.session.scalars(query).all()
+    
+    if not result:
+        raise KeyError("Not found in database")
+
+    return result[0]
+
+
+# Should do smth like open session and check if there is an open session if not create one
+# and only commit to db when session is done to avoid too much i/o
+# for now I will check always in db
+def add_or_return_training_session(user) -> TrainingSession:
+    
+    try:
+        # Obtener el momento actual en UTC
+        time_now = datetime.now(timezone.utc)
+        # Calcular el tiempo límite restando las horas especificadas
+        time_limit = time_now - timedelta(hours=3)
+        
+        # Construir la consulta
+        query = sa.select(TrainingSession).where(
+            TrainingSession.user_id == user.id,
+            TrainingSession.created_at >= time_limit,
+            TrainingSession.created_at <= time_now
+        )
+        
+        # Ejecutar la consulta y obtener los resultados
+        sessions = db.session.scalars(query).all()
+
+        if not sessions:
+            training_session = TrainingSession(user = user, date=time_now)
+            db.session.add(training_session)
+            db.session.commit()
+            return training_session
+        return sessions[0]
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error en add_or_return_training_session: {e}")
+        raise
+
+    #Look for training sessions today within 3 hours
+
+
+def add_dataframe_to_training_detail(df, session_id):
+    for _, row in df.iterrows():
+        training_detail = TrainingDetail(
+            session_id=session_id,
+            timestamp=row['Timestamp'],
+            serie=row['SERIE'],
+            rep=row['REP'],
+            kg=row['KG'],
+            d=row['D'],
+            vm=row['VM'],
+            vmp=row['VMP'],
+            rm=row['RM'],
+            p_w=row['P(W)'],
+            perfil=row['Perfil'],
+            ejercicio=row['Ejer.'],
+            ecuacion=row['Ecuacion'],
+            atleta_id=row['Atleta_ID'],  # Assuming you have Atleta_ID in df
+            hash_id=row['hash_id']
+        )
+        db.session.add(training_detail)
+    db.session.commit()
+
+def process_training_data(df):
+    user = get_user_from_df(df)
+    session = add_or_return_training_session(user)
+    add_dataframe_to_training_detail(df, session.id)
+
+
+def get_training_detail_to_dataframe():
+    details = TrainingDetail.query.all()
+    data = [{
+        'Timestamp': td.timestamp,
+        'SERIE': td.serie,
+        'REP': td.rep,
+        'KG': td.kg,
+        'D': td.d,
+        'VM': td.vm,
+        'VMP': td.vmp,
+        'RM': td.rm,
+        'P(W)': td.p_w,
+        'Perfil': td.perfil,
+        'Ejer.': td.ejercicio,
+        'Atleta': td.atleta.alias if td.atleta else None,
+        'Ecuacion': td.ecuacion,
+        'hash_id': td.hash_id
+    } for td in details]
+    return pd.DataFrame(data)
+

@@ -23,4 +23,18 @@ def create_app():
 
     from app.models import models
 
+    @app.shell_context_processor
+    def make_shell_context():
+        from app.models.models import User, TrainingSession, TrainingDetail  # Importa tus modelos aquí
+        import sqlalchemy as sa
+        import sqlalchemy.orm as so 
+        return {
+            'db': db,
+            'User': User,
+            'TrainingSession': TrainingSession,
+            'TrainingDetail': TrainingDetail,
+            'sa': sa, 
+            'so': so,
+        }
+    
     return app

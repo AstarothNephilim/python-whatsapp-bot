@@ -19,6 +19,10 @@ class Config:
     VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
         f'sqlite:///{basedir / "app.db"}'
+    
+    # Paths and other variables
+    DOWNLOAD_DATA_PATH = os.getenv("DOWNLOAD_DATA_PATH") or 'data'
+    TEMPORARY_DATAFRAME_TRAINING_FILE = os.getenv("TEMPORARY_DATAFRAME_TRAINING") or 'training_data.csv'
 
 
 
